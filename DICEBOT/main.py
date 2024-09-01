@@ -66,12 +66,12 @@ async def start(message: Message, db: MDB) -> None:
 @router.message(Command("search"))
 @router.message(F.text.lower().contains("поиск"))
 async def search_game(message: Message, bot: Bot, db: MDB) -> None:
-    user = await db.users.find_one({"_id": message.from_user.id})
+    user = await db.general.find_one({"_id": message.from_user.id})
     pattern = {"text": "У вас уже есть активная игра!"}
 
     if user["game"]["status"] == 0:
-        rival = await db.users.find_one({"game.status": 1})
-        await db.users.update_one({"_id": user["_id"]}, {"$set": {"game.status": 1}})
+        rival = await db.general.find_one({"game.status": 1})
+        await db.general.update_one({"_id": user["_id"]}, {"$set": {"game.status": 1}})
 
         if rival is None:
             pattern["text"] = "Вы успешно начали поск соперника!"
@@ -80,10 +80,10 @@ async def search_game(message: Message, bot: Bot, db: MDB) -> None:
             pattern["text"] = "Соперник найден!"
             pattern["reply_markup"] = reply_builder("🔻 Завершить")
 
-            await db.users.update_one(
+            await db.general.update_one(
                 {"_id": user["_id"]}, {"$set": {"game.status": 2, "game.rid": rival["_id"]}}
             )
-            await db.users.update_one(
+            await db.general.update_one(
                 {"_id": rival["_id"]}, {"$set": {"game.status": 2, "game.rid": user["_id"]}}
             )
 
@@ -97,28 +97,28 @@ async def search_game(message: Message, bot: Bot, db: MDB) -> None:
 @router.message(Command("cancel"))
 @router.message(F.text.lower().contains("отмена"))
 async def cancel_game(message: Message, db: MDB) -> None:
-    user = await db.users.find_one({"_id": message.from_user.id})
+    user = await db.general.find_one({"_id": message.from_user.id})
     
     if user["game"]["status"] == 1:
-        await db.users.update_one({"_id": user["_id"]}, {"$set": {"game.status": 0}})
+        await db.general.update_one({"_id": user["_id"]}, {"$set": {"game.status": 0}})
         await message.reply("Вы отменили поиск соперника!", reply_markup=reply_builder("🔎 Поиск"))
 
 
 @router.message(Command("leave"))
 @router.message(F.text.lower().contains("завершить"))
 async def leave_game(message: Message, bot: Bot, db: MDB) -> None:
-    user = await db.users.find_one({"_id": message.from_user.id})
+    user = await db.general.find_one({"_id": message.from_user.id})
     
     if user["game"]["status"] == 2:
 
-        rival = await db.users.find_one({"_id": user["game"]["rid"]})
+        rival = await db.general.find_one({"_id": user["game"]["rid"]})
         if rival["game"]["value"] > 0:
             return await message.reply("Вы не можете завершить игру, ваш соперник сделал ход!")
         
         await message.reply("Вы покинули игру!", reply_markup=reply_builder("🔎 Поиск"))
         await bot.send_message(rival["_id"], "Ваш соперник покинул игру!", reply_markup=reply_builder("🔎 Поиск"))
 
-        await db.users.update_many(
+        await db.general.update_many(
             {"_id": {"$in": [user["_id"], rival["_id"]]}},
             {"$set": {"game.status": 0, "game.value": 0, "game.rid": ""}}
         )
@@ -126,7 +126,7 @@ async def leave_game(message: Message, bot: Bot, db: MDB) -> None:
 
 @router.message(F.dice.emoji == DiceEmoji.DICE)
 async def play_game(message: Message, bot: Bot, db: MDB) -> None:
-    user = await db.users.find_one({"_id": message.from_user.id})
+    user = await db.general.find_one({"_id": message.from_user.id})
 
     results = ["Ничья!", "Ничья!"]
     update_data = {"$set": {"game.value": 0}}
@@ -135,22 +135,22 @@ async def play_game(message: Message, bot: Bot, db: MDB) -> None:
         if user["game"]["value"] > 0:
             return await message.reply("Вы не можете выкинуть кубик второй раз!")
         
-        rival = await db.users.find_one({"_id": user["game"]["rid"]})
+        rival = await db.general.find_one({"_id": user["game"]["rid"]})
 
         uvalue = message.dice.value
         rvalue = rival["game"]["value"]
 
-        await db.users.update_one({"_id": user["_id"]}, {"$set": {"game.value": uvalue}})
+        await db.general.update_one({"_id": user["_id"]}, {"$set": {"game.value": uvalue}})
 
         if rvalue > 0:
             if rvalue > uvalue:
-                await db.users.update_one({"_id": user["_id"]}, {"$inc": {"stats.loses": 1}})
-                await db.users.update_one({"_id": rival["_id"]}, {"$inc": {"stats.wins": 1}})
+                await db.general.update_one({"_id": user["_id"]}, {"$inc": {"stats.loses": 1}})
+                await db.general.update_one({"_id": rival["_id"]}, {"$inc": {"stats.wins": 1}})
 
                 results = ["Вы проиграли!", "Вы выиграли!"]
             elif rvalue < uvalue:
-                await db.users.update_one({"_id": user["_id"]}, {"$inc": {"stats.wins": 1}})
-                await db.users.update_one({"_id": rival["_id"]}, {"$inc": {"stats.loses": 1}})
+                await db.general.update_one({"_id": user["_id"]}, {"$inc": {"stats.wins": 1}})
+                await db.general.update_one({"_id": rival["_id"]}, {"$inc": {"stats.loses": 1}})
 
                 results = ["Вы проиграли!", "Вы выиграли!"][::-1]
             else:
@@ -159,7 +159,7 @@ async def play_game(message: Message, bot: Bot, db: MDB) -> None:
             await message.reply(f"{results[0]} {hcode(uvalue)} | {hcode(rvalue)}")
             await bot.send_message(rival["_id"], f"{results[1]} {hcode(uvalue)} | {hcode(rvalue)}")
 
-            await db.users.update_many(
+            await db.general.update_many(
                 {"_id": {"$in": [user["_id"], rival["_id"]]}},
                 update_data
             )

@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, F
 from app.handlers import router
 from dotenv import load_dotenv
 
-
+#changes for git 
 async def main():
     load_dotenv()
     bot = Bot(token=os.getenv('TOKEN'))
